@@ -2,7 +2,7 @@
 /* FILE: public/app.js                                                 */
 /* MỤC ĐÍCH: Logic JavaScript chính cho toàn bộ ứng dụng Ghichu App.     */
 /* PHIÊN BẢN: Đã tách logic tính toán sang utils.js                     */
-/* CẬP NHẬT: (LẦN 2) Sửa lỗi "race condition" bằng cờ isSaving           */
+/* CẬP NHẬT: (LẦN 3) Sửa lỗi race condition BẰNG doc.metadata.hasPendingWrites */
 /* =================================================================== */
 
 // ===================================================================
@@ -138,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const db = firebase.firestore();
     let currentUser = null; // Trạng thái đăng nhập
     let firestoreUnsubscribe = null; // Hàm để "ngắt" listener
-    let isSaving = false; // (SỬA LỖI) Cờ để bỏ qua listener khi đang lưu
+    // (SỬA LỖI) Xóa cờ isSaving
 
     // --- Biến Phần 5 (Đồng bộ Online) --- (ĐÃ THAY THẾ)
     const authLoggedOutView = document.getElementById('auth-logged-out-view');
@@ -1597,12 +1597,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         /**
-         * (Tự động Tải lên - ĐÃ SỬA LỖI) Đẩy ghi chú lên Firestore.
+         * (Tự động Tải lên) Đẩy ghi chú lên Firestore.
          */
         async function syncUpToFirestore() {
             if (!currentUser) return; 
             
-            isSaving = true; // (SỬA LỖI) Bật cờ
             console.log("Firebase: Đang đồng bộ LÊN...");
             try {
                 const userDocRef = db.collection('user_notes').doc(currentUser.uid);
@@ -1615,14 +1614,11 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (err) {
                 console.error("Firebase: Lỗi đồng bộ LÊN:", err);
                 showSyncStatus(`Lỗi tải lên: ${err.message}`, true);
-            } finally {
-                // (SỬA LỖI) Luôn tắt cờ sau khi save
-                isSaving = false;
             }
         }
 
         /**
-         * (Tự động Tải về - ĐÃ SỬA LỖI LẦN 2) 
+         * (Tự động Tải về - ĐÃ SỬA LỖI DÙNG hasPendingWrites) 
          * Lắng nghe thay đổi từ Firestore.
          * @param {string} userId - ID của người dùng.
          */
@@ -1637,10 +1633,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Bắt đầu lắng nghe
             firestoreUnsubscribe = userDocRef.onSnapshot(doc => {
                 
-                // (SỬA LỖI) Dùng cờ isSaving
-                if (isSaving) {
-                    console.log("Firebase: Bỏ qua snapshot (do đang lưu)...");
-                    return; // Bỏ qua snapshot này
+                // (SỬA LỖI) Dùng 'hasPendingWrites' để bỏ qua các thay đổi 'local'
+                // Việc này ngăn 'tai' (listener) ghi đè lên 'miệng' (saveNoteData)
+                if (doc.metadata.hasPendingWrites) {
+                    console.log("Firebase: Bỏ qua snapshot (đang chờ ghi local)...");
+                    return; // Không làm gì cả, chờ server xác nhận
                 }
 
                 if (doc.exists) {
@@ -1648,18 +1645,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     const data = doc.data();
                     const serverNotes = data.noteData || {};
                     
+                    // Chỉ cập nhật nếu dữ liệu server KHÁC dữ liệu local
                     if (JSON.stringify(noteData) !== JSON.stringify(serverNotes)) {
                         console.log("Firebase: Dữ liệu server khác local, đang cập nhật...");
                         noteData = serverNotes; 
+                        
+                        // GHI ĐÈ localStorage bằng dữ liệu sạch từ server
                         localStorage.setItem('myScheduleNotes', JSON.stringify(noteData));
-                        renderCalendar(currentViewDate); 
+                        
+                        renderCalendar(currentViewDate); // Vẽ lại lịch với data mới
                     }
                     
                     showSyncStatus('Đồng bộ thành công.', false);
                 } else {
-                    // Người dùng này chưa có dữ liệu, đẩy dữ liệu local lên
-                    console.log("Firebase: Người dùng mới, đẩy dữ liệu local lên.");
-                    syncUpToFirestore(); // Hàm này đã tự set isSaving = true
+                    // Người dùng này chưa có dữ liệu (hoặc đăng ký mới)
+                    // Đẩy dữ liệu local (có thể đang trống) lên
+                    console.log("Firebase: Người dùng mới/chưa có doc. Đẩy dữ liệu local lên.");
+                    syncUpToFirestore(); 
                 }
             }, err => {
                 console.error("Firebase: Lỗi listener:", err);

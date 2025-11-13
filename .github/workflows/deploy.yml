@@ -1,0 +1,23 @@
+name: Deploy to Firebase Hosting
+
+# Kích hoạt khi lưu code lên nhánh "main"
+on:
+  push:
+    branches:
+      - main # Sửa thành "master" nếu nhánh của đại ca tên là "master"
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # Bước 1: Lấy code từ GitHub về
+      - uses: actions/checkout@v4
+
+      # Bước 2: Dùng "Chìa khóa" và deploy
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+          channelId: live
+          # (!!!) QUAN TRỌNG: Sửa dòng dưới đây
+          projectId: 'ghichu'

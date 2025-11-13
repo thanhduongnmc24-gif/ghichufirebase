@@ -321,7 +321,25 @@
             <span>Cài đặt</span>
         </button>
     </nav>
-    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+<script>
+  // TODO: Dán cấu hình Firebase của đại ca vào đây
+  const firebaseConfig = {
+  apiKey: "AIzaSyDTTJY5vk4xbQwbxPlZIs1QMsZQ9Cg1Zlw",
+  authDomain: "duongghichu.firebaseapp.com",
+  projectId: "duongghichu",
+  storageBucket: "duongghichu.firebasestorage.app",
+  messagingSenderId: "361862439189",
+  appId: "1:361862439189:web:0ffa55c34123e6782f091c",
+  measurementId: "G-V235EGKFPL"
+};
+
+  // Khởi chạy Firebase
+  firebase.initializeApp(firebaseConfig);
+</script>
     <script type="module" src="/app.js"></script>
 
 </body>

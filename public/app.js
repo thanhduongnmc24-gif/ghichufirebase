@@ -2,6 +2,7 @@
 /* FILE: public/app.js                                                 */
 /* MỤC ĐÍCH: Logic JavaScript chính cho toàn bộ ứng dụng Ghichu App.     */
 /* PHIÊN BẢN: Đã tách logic tính toán sang utils.js                     */
+/* CẬP NHẬT: Đã thay thế Sync/Admin bằng Firebase Auth/Firestore        */
 /* =================================================================== */
 
 // ===================================================================
@@ -112,24 +113,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const bottomTabChat = document.getElementById('bottom-tab-chat');
     const bottomTabSettings = document.getElementById('bottom-tab-settings');
     const bottomNav = document.getElementById('bottom-nav'); 
-
-   // --- Biến Phần 5 (Đồng bộ Online) ---
-const authLoggedOutView = document.getElementById('auth-logged-out-view');
-const authLoggedInView = document.getElementById('auth-logged-in-view');
-const authEmailInput = document.getElementById('auth-email');
-const authPasswordInput = document.getElementById('auth-password');
-const authLoginBtn = document.getElementById('auth-login-btn');
-const authRegisterBtn = document.getElementById('auth-register-btn');
-const authUserEmail = document.getElementById('auth-user-email');
-const authLogoutBtn = document.getElementById('auth-logout-btn');
-const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
-
-    // --- Biến Phần 6 (Admin) ---
-
     
     // --- Biến Trạng thái (State) ---
     let summaryViewMode = 'byDate'; // 'byDate' hoặc 'byNote'
-    let currentAdminCreds = null; // Lưu trữ thông tin đăng nhập Admin
+    let currentAdminCreds = null; // (KHÔNG CÒN DÙNG)
     let currentEditingDateStr = null; // Ngày đang sửa trong modal
     let currentViewDate = new Date(); // Tháng đang xem trên lịch
     let chatHistory = []; // Lịch sử chat
@@ -145,13 +132,29 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
         notifyTimeDem: "20:00",
         notifyTimeOff: "08:00"
     };
+
     // (MỚI) Biến Firebase
     const auth = firebase.auth();
     const db = firebase.firestore();
     let currentUser = null; // Trạng thái đăng nhập
     let firestoreUnsubscribe = null; // Hàm để "ngắt" listener
+
+    // --- Biến Phần 5 (Đồng bộ Online) --- (ĐÃ THAY THẾ)
+    const authLoggedOutView = document.getElementById('auth-logged-out-view');
+    const authLoggedInView = document.getElementById('auth-logged-in-view');
+    const authEmailInput = document.getElementById('auth-email');
+    const authPasswordInput = document.getElementById('auth-password');
+    const authLoginBtn = document.getElementById('auth-login-btn');
+    const authRegisterBtn = document.getElementById('auth-register-btn');
+    const authUserEmail = document.getElementById('auth-user-email');
+    const authLogoutBtn = document.getElementById('auth-logout-btn');
+    const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
+    
+    // --- Biến Phần 6 (Admin) --- (ĐÃ XÓA)
+    
     // ===================================================================
     // PHẦN 1: LOGIC TIN TỨC (RSS, TÓM TẮT, CHAT)
+    // (LƯU Ý: ĐANG BỊ HỎNG - CHỜ CLOUD FUNCTIONS)
     // ===================================================================
     
     // --- Các hằng số cho icon toast ---
@@ -170,6 +173,8 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
             summaryEventSource.close(); // Đóng stream cũ nếu có
         }
         let currentSummaryText = '';
+        
+        // (BỊ HỎNG - CHỜ CLOUD FUNCTIONS)
         const encodedPrompt = encodeURIComponent(prompt);
         const streamUrl = `/summarize-stream?prompt=${encodedPrompt}`;
         
@@ -179,7 +184,7 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
         
         summaryEventSource.onerror = (error) => {
             console.error("Lỗi kết nối EventSource:", error);
-            showToast("Lỗi tóm tắt", "Không thể kết nối server.", 'error', null, 5000); 
+            showToast("Lỗi tóm tắt", "Không thể kết nối server (API).", 'error', null, 5000); 
             if (summaryEventSource) summaryEventSource.close();
             summaryEventSource = null;
         };
@@ -246,7 +251,7 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
         // ==========================================================
 
         try {
-            // Gửi request lên server
+            // (BỊ HỎNG - CHỜ CLOUD FUNCTIONS)
             const response = await fetch('/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -259,7 +264,7 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
             
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`Lỗi server: ${errorText}`);
+                throw new Error(`Lỗi server (API): ${errorText}`);
             }
             
             const result = await response.json();
@@ -317,8 +322,10 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
         
         // Nếu không có cache, gọi API
         try {
+            // (BỊ HỎNG - CHỜ CLOUD FUNCTIONS)
+            // ĐẠI CA SẼ SỬA DÒNG NÀY BẰNG URL CLOUD FUNCTION SAU
             const response = await fetch(`/get-rss?url=${encodeURIComponent(rssUrl)}`);
-            if (!response.ok) throw new Error('Lỗi server (RSS)');
+            if (!response.ok) throw new Error('Lỗi server (API)');
             
             const str = await response.text();
             const parser = new DOMParser();
@@ -648,7 +655,10 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
             }
         }
         localStorage.setItem('myScheduleNotes', JSON.stringify(cleanData));
+        
+        // (MỚI) Tự động đẩy lên Firebase nếu đã đăng nhập
         syncUpToFirestore();
+        
         // Đồng bộ lên server (nếu đã đăng ký push)
         syncNotesToServer().catch(err => console.error('Lỗi đồng bộ ghi chú:', err));
     }
@@ -776,16 +786,16 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
                 
                 // Đánh dấu ngày hôm nay
                 if (dateStr === todayStr) {
-    // Bước 1: Xóa tất cả các màu nền cũ (quan trọng, để ghi đè lên màu 'giãn ca')
-    dayCell.classList.remove('bg-white', 'bg-yellow-100', 'bg-gray-100');
-    
-    // Bước 2: Thêm màu nền và viền cho "hôm nay"
-    dayCell.classList.add('today', 'bg-blue-100', 'border-2', 'border-blue-500'); // <-- NỀN XANH NHẠT
-    
-    // Bước 3: Đổi màu chữ cho dễ đọc
-    dayNumberEl.classList.add('text-blue-700', 'font-bold'); // <-- CHỮ XANH ĐẬM
-    dayNumberEl.classList.remove('text-gray-800'); // Xóa màu chữ xám
-} else if (lunarDate.day === 1) {
+                    // Bước 1: Xóa tất cả các màu nền cũ (quan trọng, để ghi đè lên màu 'giãn ca')
+                    dayCell.classList.remove('bg-white', 'bg-yellow-100', 'bg-gray-100');
+                    
+                    // Bước 2: Thêm màu nền và viền cho "hôm nay"
+                    dayCell.classList.add('today', 'bg-blue-100', 'border-2', 'border-blue-500'); // <-- NỀN XANH NHẠT
+                    
+                    // Bước 3: Đổi màu chữ cho dễ đọc
+                    dayNumberEl.classList.add('text-blue-700', 'font-bold'); // <-- CHỮ XANH ĐẬM
+                    dayNumberEl.classList.remove('text-gray-800'); // Xóa màu chữ xám
+                } else if (lunarDate.day === 1) {
                     // Đánh dấu mùng 1 (nếu không phải hôm nay)
                     lunarDayEl.classList.add("text-red-500");
                     lunarDayEl.classList.remove("text-red-600");
@@ -1007,6 +1017,7 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
     /**
      * Lấy VAPID public key từ server.
      * Cần cho việc đăng ký Push.
+     * (BỊ HỎNG - CHỜ CLOUD FUNCTIONS)
      */
     async function getVapidPublicKey() {
         try {
@@ -1014,7 +1025,7 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
             vapidPublicKey = await response.text();
             console.log("Đã lấy VAPID Public Key.");
         } catch (err) {
-            console.error("Lỗi khi lấy VAPID Public Key:", err);
+            console.error("Lỗi khi lấy VAPID Public Key (API hỏng):", err);
         }
     }
 
@@ -1039,10 +1050,11 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
     /**
      * Xử lý sự kiện khi nhấn nút "Bật/Tắt Thông Báo".
      * Bao gồm logic Đăng ký (Subscribe) và Hủy đăng ký (Unsubscribe).
+     * (BỊ HỎNG - CHỜ CLOUD FUNCTIONS)
      */
     async function handleSubscribeClick() {
         if (!swRegistration || !vapidPublicKey) {
-            alert("Service Worker hoặc VAPID Key chưa sẵn sàng. Vui lòng thử lại.");
+            alert("Service Worker hoặc VAPID Key chưa sẵn sàng (API hỏng). Vui lòng thử lại.");
             return;
         }
         
@@ -1055,7 +1067,7 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
             try {
                 const unsubscribed = await existingSubscription.unsubscribe();
                 if (unsubscribed) {
-                    // Gửi yêu cầu xóa subscription khỏi DB
+                    // Gửi yêu cầu xóa subscription khỏi DB (BỊ HỎNG - CHỜ CLOUD FUNCTIONS)
                     await fetch('/unsubscribe', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1065,8 +1077,8 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
                     alert("Đã tắt thông báo.");
                 }
             } catch (err) {
-                console.error("Lỗi khi hủy đăng ký:", err);
-                alert("Lỗi khi tắt thông báo.");
+                console.error("Lỗi khi hủy đăng ký (API hỏng):", err);
+                alert("Lỗi khi tắt thông báo (API hỏng).");
             }
         } else {
             // --- ĐĂNG KÝ MỚI ---
@@ -1100,7 +1112,7 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
                 const noteDataStr = localStorage.getItem('myScheduleNotes') || '{}';
                 const noteData = JSON.parse(noteDataStr);
                 
-                // Gửi subscription, settings, và notes lên server
+                // Gửi subscription, settings, và notes lên server (BỊ HỎNG - CHỜ CLOUD FUNCTIONS)
                 await fetch('/subscribe', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1111,12 +1123,12 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
                     })
                 });
                 
-                console.log("Đã đăng ký và gửi (cả ghi chú) lên server.");
+                console.log("Đã đăng ký và gửi (cả ghi chú) lên server (API hỏng).");
                 alert("Đã bật thông báo thành công!");
 
             } catch (err) {
-                console.error("Lỗi khi đăng ký push:", err);
-                alert("Lỗi khi bật thông báo. Key hoặc Service Worker có vấn đề.");
+                console.error("Lỗi khi đăng ký push (API hỏng):", err);
+                alert("Lỗi khi bật thông báo (API hỏng).");
             }
         }
         
@@ -1127,6 +1139,7 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
     /**
      * Cập nhật Cài đặt (giờ, ghi chú) lên server BẤT CỨ KHI NÀO CÓ THAY ĐỔI.
      * Chỉ hoạt động nếu người dùng đã đăng ký push.
+     * (BỊ HỎNG - CHỜ CLOUD FUNCTIONS)
      */
     async function updateSubscriptionSettings() {
         if (!swRegistration) return;
@@ -1137,7 +1150,7 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
             return;
         }
         
-        console.log("Đang cập nhật settings (giờ) lên server...");
+        console.log("Đang cập nhật settings (giờ) lên server (API hỏng)...");
         try {
             const settings = {
                 notifyTimeNgay: notifyTimeNgay.value,
@@ -1158,9 +1171,9 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
                     noteData: noteData 
                 })
             });
-            console.log("Đã cập nhật settings (và ghi chú) trên server.");
+            console.log("Đã cập nhật settings (và ghi chú) trên server (API hỏng).");
         } catch (err) {
-            console.error("Lỗi khi cập nhật settings:", err);
+            console.error("Lỗi khi cập nhật settings (API hỏng):", err);
         }
     }
 
@@ -1168,6 +1181,7 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
      * Đồng bộ GHI CHÚ lên server (cho máy chủ Push Notification).
      * Được gọi khi lưu ghi chú, hoặc khi mở tab Cài đặt.
      * Chỉ hoạt động nếu đã đăng ký push.
+     * (BỊ HỎNG - CHỜ CLOUD FUNCTIONS)
      */
     async function syncNotesToServer() {
         if (!swRegistration) return;
@@ -1177,7 +1191,7 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
             return; // Nếu chưa đăng ký thông báo thì không làm gì
         }
         
-        console.log("Đang đồng bộ ghi chú (vì có thay đổi) lên server...");
+        console.log("Đang đồng bộ ghi chú (vì có thay đổi) lên server (API hỏng)...");
         try {
             const noteDataStr = localStorage.getItem('myScheduleNotes') || '{}';
             const noteData = JSON.parse(noteDataStr);
@@ -1191,171 +1205,17 @@ const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
                     noteData: noteData
                 })
             });
-            console.log("Đồng bộ ghi chú (cho Push) thành công.");
+            console.log("Đồng bộ ghi chú (cho Push) thành công (API hỏng).");
         } catch (err) {
-            console.error("Lỗi khi đồng bộ ghi chú (cho Push):", err);
+            console.error("Lỗi khi đồng bộ ghi chú (cho Push) (API hỏng):", err);
         }
     }
 
 
     // ===================================================================
-    // PHẦN 3: LOGIC ADMIN (ĐĂNG NHẬP, XEM, XÓA)
-   // ==========================================================
-// (MỚI) KHỐI FIREBASE AUTH & FIRESTORE (Thay thế Sync/Admin)
-// ==========================================================
-
-/**
- * Tự động được gọi khi trạng thái đăng nhập thay đổi (load trang, đăng nhập, đăng xuất).
- */
-auth.onAuthStateChanged(user => {
-    if (user) {
-        // --- ĐÃ ĐĂNG NHẬP ---
-        console.log("Firebase: Đã đăng nhập với:", user.email);
-        currentUser = user;
-
-        // Cập nhật giao diện
-        authLoggedInView.classList.remove('hidden');
-        authLoggedOutView.classList.add('hidden');
-        authUserEmail.textContent = user.email;
-        showSyncStatus('Đã đăng nhập. Bắt đầu đồng bộ...', false);
-
-        // (QUAN TRỌNG) Kích hoạt listener tự động tải về
-        setupFirestoreListener(user.uid);
-
-    } else {
-        // --- ĐÃ ĐĂNG XUẤT / CHƯA ĐĂNG NHẬP ---
-        console.log("Firebase: Chưa đăng nhập.");
-        currentUser = null;
-
-        // Cập nhật giao diện
-        authLoggedInView.classList.add('hidden');
-        authLoggedOutView.classList.remove('hidden');
-        authUserEmail.textContent = '';
-
-        // (QUAN TRỌNG) Ngắt kết nối listener cũ (nếu có)
-        if (firestoreUnsubscribe) {
-            firestoreUnsubscribe(); // Ngắt đồng bộ real-time
-            firestoreUnsubscribe = null;
-            console.log("Firebase: Đã ngắt đồng bộ.");
-        }
-    }
-});
-
-/**
- * (Tự động Tải lên) Đẩy ghi chú lên Firestore.
- */
-async function syncUpToFirestore() {
-    if (!currentUser) return; // Chưa đăng nhập, không làm gì cả
-
-    console.log("Firebase: Đang đồng bộ LÊN...");
-    try {
-        const userDocRef = db.collection('user_notes').doc(currentUser.uid);
-        // Chúng ta dùng set({ noteData }, { merge: true }) 
-        // để nó chỉ cập nhật trường 'noteData', không xóa các trường khác
-        await userDocRef.set({
-            noteData: noteData 
-        }, { merge: true });
-
-        console.log("Firebase: Đồng bộ LÊN thành công.");
-
-    } catch (err) {
-        console.error("Firebase: Lỗi đồng bộ LÊN:", err);
-        showSyncStatus(`Lỗi tải lên: ${err.message}`, true);
-    }
-}
-
-/**
- * (Tự động Tải về) Lắng nghe thay đổi từ Firestore.
- * @param {string} userId - ID của người dùng.
- */
-function setupFirestoreListener(userId) {
-    // Ngắt listener cũ (nếu có)
-    if (firestoreUnsubscribe) {
-        firestoreUnsubscribe();
-    }
-
-    const userDocRef = db.collection('user_notes').doc(userId);
-
-    // Bắt đầu lắng nghe
-    firestoreUnsubscribe = userDocRef.onSnapshot(doc => {
-        if (doc.exists) {
-            console.log("Firebase: Nhận được dữ liệu TẢI VỀ...");
-            const data = doc.data();
-            const serverNotes = data.noteData || {};
-
-            // (QUAN TRỌNG) Hợp nhất dữ liệu
-            // Đây là logic đơn giản: "Ghi đè" local bằng server
-            // Sau này có thể làm logic hợp nhất thông minh hơn
-            noteData = serverNotes; 
-
-            // Lưu vào local và vẽ lại
-            localStorage.setItem('myScheduleNotes', JSON.stringify(noteData));
-            renderCalendar(currentViewDate); // Vẽ lại lịch với data mới
-
-            showSyncStatus('Đồng bộ thành công.', false);
-        } else {
-            // Người dùng này chưa có dữ liệu, đẩy dữ liệu local lên
-            console.log("Firebase: Người dùng mới, đẩy dữ liệu local lên.");
-            syncUpToFirestore(); 
-        }
-    }, err => {
-        console.error("Firebase: Lỗi listener:", err);
-        showSyncStatus(`Lỗi đồng bộ: ${err.message}`, true);
-    });
-}
-
-// --- Gắn sự kiện cho các nút Auth mới ---
-
-// Đăng nhập
-authLoginBtn.addEventListener('click', async () => {
-    const email = authEmailInput.value.trim();
-    const password = authPasswordInput.value.trim();
-    if (!email || !password) {
-        showSyncStatus('Vui lòng nhập email và mật khẩu.', true);
-        return;
-    }
-
-    showSyncStatus('Đang đăng nhập...', false);
-    try {
-        await auth.signInWithEmailAndPassword(email, password);
-        // Hàm onAuthStateChanged ở trên sẽ tự động xử lý
-    } catch (err) {
-        showSyncStatus(err.message, true);
-    }
-});
-
-// Đăng ký
-authRegisterBtn.addEventListener('click', async () => {
-    const email = authEmailInput.value.trim();
-    const password = authPasswordInput.value.trim();
-    if (!email || !password) {
-        showSyncStatus('Vui lòng nhập email và mật khẩu.', true);
-        return;
-    }
-
-    showSyncStatus('Đang tạo tài khoản...', false);
-    try {
-        await auth.createUserWithEmailAndPassword(email, password);
-        // Hàm onAuthStateChanged ở trên sẽ tự động xử lý
-    } catch (err) {
-        showSyncStatus(err.message, true);
-    }
-});
-
-// Đăng xuất
-authLogoutBtn.addEventListener('click', async () => {
-    try {
-        await auth.signOut();
-        // Hàm onAuthStateChanged ở trên sẽ tự động xử lý
-        showSyncStatus('Đã đăng xuất.', false);
-    } catch (err) {
-        showSyncStatus(err.message, true);
-    }
-});
-
-// --- Kết thúc khối sự kiện 3 ---
-})();
-
+    // PHẦN 3: LOGIC ADMIN (ĐÃ XÓA)
+    // ===================================================================
+    
     // ===================================================================
     // PHẦN 4: LOGIC ĐIỀU HƯỚNG (TAB)
     // ===================================================================
@@ -1373,8 +1233,8 @@ authLogoutBtn.addEventListener('click', async () => {
         if (currentTab === 'chat') {
             resetChat(); // Reset chat nếu rời khỏi tab chat
         }
-        if (currentTab === 'settings' && currentAdminCreds) {
-            adminLogout(); // Tự động logout admin nếu rời tab settings
+        if (currentTab === 'settings') {
+            // (ĐÃ XÓA) adminLogout(); 
         }
         
         currentTab = tabName;
@@ -1565,16 +1425,16 @@ authLogoutBtn.addEventListener('click', async () => {
         });
         // (MỚI) Chuyển đổi chế độ xem tổng kết
         toggleSummaryViewBtn.addEventListener('click', () => {
-    // Đảo trạng thái
-       if (summaryViewMode === 'byDate') {
-        summaryViewMode = 'byNote';
-        toggleSummaryViewBtn.textContent = 'Xem theo: Ngày';
-       } else {
-        summaryViewMode = 'byDate';
-        toggleSummaryViewBtn.textContent = 'Xem theo: Ghi chú';
-    }
-    // Vẽ lại bảng tổng kết với trạng thái mới
-    renderMonthlyNoteSummary(currentViewDate);
+            // Đảo trạng thái
+           if (summaryViewMode === 'byDate') {
+            summaryViewMode = 'byNote';
+            toggleSummaryViewBtn.textContent = 'Xem theo: Ngày';
+           } else {
+            summaryViewMode = 'byDate';
+            toggleSummaryViewBtn.textContent = 'Xem theo: Ghi chú';
+        }
+        // Vẽ lại bảng tổng kết với trạng thái mới
+        renderMonthlyNoteSummary(currentViewDate);
          });
         // --- Lịch (Modal Ghi chú) ---
         // Đóng modal
@@ -1648,7 +1508,7 @@ authLogoutBtn.addEventListener('click', async () => {
             cal_aiForm.querySelector('button').textContent = "Đang xử lý...";
             
             try {
-                // Gọi API AI
+                // (BỊ HỎNG - CHỜ CLOUD FUNCTIONS)
                 const response = await fetch('/api/calendar-ai-parse', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1674,8 +1534,8 @@ authLogoutBtn.addEventListener('click', async () => {
                     throw new Error("AI không trả về định dạng mảng.");
                 }
             } catch (err) {
-                console.error('Lỗi gọi AI API (Lịch):', err);
-                alert('Không thể phân tích. Vui lòng kiểm tra lại prompt và API key.');
+                console.error('Lỗi gọi AI API (Lịch) (API hỏng):', err);
+                alert('Không thể phân tích. (API hỏng).');
             }
             
             // Mở lại form
@@ -1684,177 +1544,160 @@ authLogoutBtn.addEventListener('click', async () => {
             cal_aiForm.querySelector('button').textContent = "Phân tích";
         });
 
-        // --- Đồng bộ Online (Sync) ---
-        if (syncUpBtn) {
-            syncUpBtn.addEventListener('click', async () => {
-                const username = syncUsernameInput.value.trim();
-                const password = syncPasswordInput.value.trim();
-                if (!username || !password) {
-                    showSyncStatus('Vui lòng nhập Tên và Mật khẩu.', true);
-                    return;
-                }
+        // ==========================================================
+        // (MỚI) KHỐI FIREBASE AUTH & FIRESTORE (Thay thế Sync/Admin)
+        // ==========================================================
+
+        /**
+         * Tự động được gọi khi trạng thái đăng nhập thay đổi (load trang, đăng nhập, đăng xuất).
+         */
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                // --- ĐÃ ĐĂNG NHẬP ---
+                console.log("Firebase: Đã đăng nhập với:", user.email);
+                currentUser = user;
                 
-                showSyncStatus('Đang tải lên...', false);
-                syncUpBtn.disabled = true;
-                syncDownBtn.disabled = true;
-                if(adminLoginBtn) adminLoginBtn.disabled = true;
+                // Cập nhật giao diện
+                authLoggedInView.classList.remove('hidden');
+                authLoggedOutView.classList.add('hidden');
+                authUserEmail.textContent = user.email;
+                showSyncStatus('Đã đăng nhập. Bắt đầu đồng bộ...', false);
 
-                try {
-                    const response = await fetch('/api/sync/up', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            username: username, 
-                            password: password, 
-                            noteData: noteData // Dùng biến noteData toàn cục
-                        })
-                    });
-                    const result = await response.json();
-                    if (!response.ok) throw new Error(result.error || 'Lỗi không xác định');
-                    
-                    showSyncStatus(result.message, false);
+                // (QUAN TRỌNG) Kích hoạt listener tự động tải về
+                setupFirestoreListener(user.uid);
 
-                } catch (err) {
-                    showSyncStatus(err.message, true);
-                } finally {
-                    syncUpBtn.disabled = false;
-                    syncDownBtn.disabled = false;
-                    if(adminLoginBtn) adminLoginBtn.disabled = false;
-                }
-            });
-        }
-
-        if (syncDownBtn) {
-            syncDownBtn.addEventListener('click', async () => {
-                const username = syncUsernameInput.value.trim();
-                const password = syncPasswordInput.value.trim();
-                if (!username || !password) {
-                    showSyncStatus('Vui lòng nhập Tên và Mật khẩu.', true);
-                    return;
-                }
-
-                if (!confirm('HÀNH ĐỘNG NGUY HIỂM!\n\nViệc này sẽ GHI ĐÈ toàn bộ ghi chú hiện tại trên máy này bằng dữ liệu trên server.\n\nĐại ca có chắc chắn muốn tải về?')) {
-                    return;
-                }
-
-                showSyncStatus('Đang tải về...', false);
-                syncUpBtn.disabled = true;
-                syncDownBtn.disabled = true;
-                if(adminLoginBtn) adminLoginBtn.disabled = true;
-
-                try {
-                    const response = await fetch('/api/sync/down', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            username: username, 
-                            password: password 
-                        })
-                    });
-                    
-                    if (!response.ok) {
-                        const result = await response.json();
-                        throw new Error(result.error || 'Lỗi không xác định');
-                    }
-
-                    const downloadedNotes = await response.json();
-                    
-                    // 1. Cập nhật dữ liệu
-                    noteData = downloadedNotes || {};
-                    // 2. Lưu vào local
-                    saveNoteData(); // Hàm này đã bao gồm cả lưu localStorage
-                    // 3. Vẽ lại lịch
-                    renderCalendar(currentViewDate); 
-                    
-                    showSyncStatus('Tải về và đồng bộ thành công!', false);
-                    
-                } catch (err) {
-                    showSyncStatus(err.message, true);
-                } finally {
-                    syncUpBtn.disabled = false;
-                    syncDownBtn.disabled = false;
-                    if(adminLoginBtn) adminLoginBtn.disabled = false;
-                }
-            });
-        }
-        
-        // --- Admin ---
-        if (adminLoginBtn) {
-            adminLoginBtn.addEventListener('click', async () => {
-                const username = syncUsernameInput.value.trim();
-                const password = syncPasswordInput.value.trim();
-                if (!username || !password) {
-                    showSyncStatus('Vui lòng nhập Tên và Mật khẩu Admin.', true);
-                    return;
-                }
+            } else {
+                // --- ĐÃ ĐĂNG XUẤT / CHƯA ĐĂNG NHẬP ---
+                console.log("Firebase: Chưa đăng nhập.");
+                currentUser = null;
                 
-                showSyncStatus('Đang đăng nhập Admin...', false);
-                adminLoginBtn.disabled = true;
-                syncUpBtn.disabled = true;
-                syncDownBtn.disabled = true;
-
-                const creds = { adminUser: username, adminPass: password };
-
-                try {
-                    // Chúng ta dùng API 'get-users' để kiểm tra đăng nhập
-                    const response = await fetch('/api/admin/get-users', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(creds)
-                    });
-                    
-                    const result = await response.json();
-                    if (!response.ok) throw new Error(result.error || 'Lỗi không xác định');
-                    
-                    // Đăng nhập thành công
-                    showSyncStatus('Đăng nhập Admin thành công!', false);
-                    currentAdminCreds = creds; // Lưu lại thông tin đăng nhập
-                    loadAdminPanel(); // Tải bảng admin
-
-                } catch (err) {
-                    showSyncStatus(err.message, true);
-                    currentAdminCreds = null;
-                } finally {
-                    adminLoginBtn.disabled = false;
-                    syncUpBtn.disabled = false;
-                    syncDownBtn.disabled = false;
+                // Cập nhật giao diện
+                authLoggedInView.classList.add('hidden');
+                authLoggedOutView.classList.remove('hidden');
+                authUserEmail.textContent = '';
+                
+                // (QUAN TRỌNG) Ngắt kết nối listener cũ (nếu có)
+                if (firestoreUnsubscribe) {
+                    firestoreUnsubscribe(); // Ngắt đồng bộ real-time
+                    firestoreUnsubscribe = null;
+                    console.log("Firebase: Đã ngắt đồng bộ.");
                 }
-            });
-        }
-        
-        if (adminLogoutBtn) {
-            adminLogoutBtn.addEventListener('click', adminLogout);
+            }
+        });
+
+        /**
+         * (Tự động Tải lên) Đẩy ghi chú lên Firestore.
+         */
+        async function syncUpToFirestore() {
+            if (!currentUser) return; // Chưa đăng nhập, không làm gì cả
+            
+            console.log("Firebase: Đang đồng bộ LÊN...");
+            try {
+                const userDocRef = db.collection('user_notes').doc(currentUser.uid);
+                // Chúng ta dùng set({ noteData }, { merge: true }) 
+                // để nó chỉ cập nhật trường 'noteData', không xóa các trường khác
+                await userDocRef.set({
+                    noteData: noteData 
+                }, { merge: true });
+                
+                console.log("Firebase: Đồng bộ LÊN thành công.");
+                
+            } catch (err) {
+                console.error("Firebase: Lỗi đồng bộ LÊN:", err);
+                showSyncStatus(`Lỗi tải lên: ${err.message}`, true);
+            }
         }
 
-        // Gắn listener cho các nút trong danh sách (event delegation)
-        if (adminUserListBody) {
-            adminUserListBody.addEventListener('click', (e) => {
-                const target = e.target;
-                const username = target.dataset.user;
-                if (!username) return;
+        /**
+         * (Tự động Tải về) Lắng nghe thay đổi từ Firestore.
+         * @param {string} userId - ID của người dùng.
+         */
+        function setupFirestoreListener(userId) {
+            // Ngắt listener cũ (nếu có)
+            if (firestoreUnsubscribe) {
+                firestoreUnsubscribe();
+            }
 
-                if (target.classList.contains('admin-view-notes')) {
-                    adminViewNotes(username);
-                } else if (target.classList.contains('admin-delete-user')) {
-                    adminDeleteUser(username);
+            const userDocRef = db.collection('user_notes').doc(userId);
+
+            // Bắt đầu lắng nghe
+            firestoreUnsubscribe = userDocRef.onSnapshot(doc => {
+                if (doc.exists) {
+                    console.log("Firebase: Nhận được dữ liệu TẢI VỀ...");
+                    const data = doc.data();
+                    const serverNotes = data.noteData || {};
+                    
+                    // (QUAN TRỌNG) Hợp nhất dữ liệu
+                    // Đây là logic đơn giản: "Ghi đè" local bằng server
+                    // Sau này có thể làm logic hợp nhất thông minh hơn
+                    noteData = serverNotes; 
+                    
+                    // Lưu vào local và vẽ lại
+                    localStorage.setItem('myScheduleNotes', JSON.stringify(noteData));
+                    renderCalendar(currentViewDate); // Vẽ lại lịch với data mới
+                    
+                    showSyncStatus('Đồng bộ thành công.', false);
+                } else {
+                    // Người dùng này chưa có dữ liệu, đẩy dữ liệu local lên
+                    console.log("Firebase: Người dùng mới, đẩy dữ liệu local lên.");
+                    syncUpToFirestore(); 
                 }
+            }, err => {
+                console.error("Firebase: Lỗi listener:", err);
+                showSyncStatus(`Lỗi đồng bộ: ${err.message}`, true);
             });
-        }
-        
-        // Đóng modal xem ghi chú (Admin)
-        if (adminCloseNoteViewer) {
-            adminCloseNoteViewer.addEventListener('click', () => {
-                adminNoteViewerModal.classList.add('hidden');
-            });
-        }
-        if (adminNoteViewerModal) {
-             adminNoteViewerModal.addEventListener('click', (e) => {
-                 if (e.target === adminNoteViewerModal) {
-                    adminNoteViewerModal.classList.add('hidden');
-                 }
-             });
         }
 
+        // --- Gắn sự kiện cho các nút Auth mới ---
+
+        // Đăng nhập
+        authLoginBtn.addEventListener('click', async () => {
+            const email = authEmailInput.value.trim();
+            const password = authPasswordInput.value.trim();
+            if (!email || !password) {
+                showSyncStatus('Vui lòng nhập email và mật khẩu.', true);
+                return;
+            }
+            
+            showSyncStatus('Đang đăng nhập...', false);
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+                // Hàm onAuthStateChanged ở trên sẽ tự động xử lý
+            } catch (err) {
+                showSyncStatus(err.message, true);
+            }
+        });
+
+        // Đăng ký
+        authRegisterBtn.addEventListener('click', async () => {
+            const email = authEmailInput.value.trim();
+            const password = authPasswordInput.value.trim();
+            if (!email || !password) {
+                showSyncStatus('Vui lòng nhập email và mật khẩu.', true);
+                return;
+            }
+            
+            showSyncStatus('Đang tạo tài khoản...', false);
+            try {
+                await auth.createUserWithEmailAndPassword(email, password);
+                // Hàm onAuthStateChanged ở trên sẽ tự động xử lý
+            } catch (err) {
+                showSyncStatus(err.message, true);
+            }
+        });
+
+        // Đăng xuất
+        authLogoutBtn.addEventListener('click', async () => {
+            try {
+                await auth.signOut();
+                // Hàm onAuthStateChanged ở trên sẽ tự động xử lý
+                showSyncStatus('Đã đăng xuất.', false);
+            } catch (err) {
+                showSyncStatus(err.message, true);
+            }
+        });
+
+        // --- Kết thúc khối sự kiện 3 ---
     })();
     
     // ----- KHỐI SỰ KIỆN 4: KHỞI ĐỘNG TAB BAN ĐẦU -----

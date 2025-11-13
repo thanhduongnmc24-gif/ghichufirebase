@@ -178,45 +178,46 @@
                 </label>
             </fieldset>
 
-            <fieldset class="border border-gray-600 p-4 rounded-lg mt-6">
-                <legend class="text-lg font-semibold text-white px-2">Đồng bộ Online</legend>
-                
-                <p class="text-sm text-gray-400 mt-2 mb-4">Lưu hoặc tải dữ liệu ghi chú của đại ca bằng tài khoản riêng.</p>
+           <fieldset class="border border-gray-600 p-4 rounded-lg mt-6">
+    <legend class="text-lg font-semibold text-white px-2">Tài khoản</legend>
 
-                <div class="space-y-3">
-                    <label class="block">
-                        <span class="text-sm font-medium text-gray-300">Tên đăng nhập:</span>
-                        <input type="text" id="sync-username" placeholder="Tên của đại ca" autocomplete="username" class="w-full mt-1 p-3 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500">
-                    </label>
-                    <label class="block">
-                        <span class="text-sm font-medium text-gray-300">Mật khẩu:</span>
-                        <input type="password" id="sync-password" placeholder="Mật khẩu bí mật" autocomplete="current-password" class="w-full mt-1 p-3 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500">
-                    </label>
-                </div>
-                
-                <div class="flex space-x-3 mt-4">
-                    <button id="sync-up-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors">
-                        Tải lên
-                    </button>
-                    <button id="sync-down-btn" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition-colors">
-                        Tải về
-                    </button>
-                </div>
-                
-                <button id="admin-login-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors mt-3">
-                    Đăng nhập Quản trị
-                </button>
-                
-                <p id="sync-status-msg" class="text-sm text-gray-400 mt-3 text-center hidden"></p>
+    <div id="auth-logged-out-view">
+        <p class="text-sm text-gray-400 mt-2 mb-4">Đăng nhập để đồng bộ ghi chú tự động giữa các thiết bị.</p>
+        <div class="space-y-3">
+            <label class="block">
+                <span class="text-sm font-medium text-gray-300">Email (dùng để đăng nhập):</span>
+                <input type="email" id="auth-email" placeholder="dai.ca@gmail.com" autocomplete="email" class="w-full mt-1 p-3 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500">
+            </label>
+            <label class="block">
+                <span class="text-sm font-medium text-gray-300">Mật khẩu:</span>
+                <input type="password" id="auth-password" placeholder="Mật khẩu bí mật" autocomplete="current-password" class="w-full mt-1 p-3 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500">
+            </label>
+        </div>
 
-            </fieldset>
+        <div class="flex space-x-3 mt-4">
+            <button id="auth-login-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors">
+                Đăng nhập
+            </button>
+            <button id="auth-register-btn" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition-colors">
+                Đăng ký
+            </button>
+        </div>
+    </div>
 
-            <fieldset id="admin-panel" class="border border-gray-600 p-4 rounded-lg mt-6 hidden">
-                <legend class="text-lg font-semibold text-red-400 px-2">Bảng Quản Trị</legend>
-                
-                <button id="admin-logout-btn" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition-colors mb-4">
-                    Đăng xuất Admin
-                </button>
+    <div id="auth-logged-in-view" class="hidden">
+        <p class="text-sm text-gray-300 mt-2 mb-4">Đã đăng nhập với email: <strong id="auth-user-email">...</strong></p>
+        <p class="text-sm text-gray-400 mb-4">Dữ liệu đang được đồng bộ tự động.</p>
+        <button id="auth-logout-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition-colors">
+            Đăng xuất
+        </button>
+    </div>
+
+    <p id="sync-status-msg" class="text-sm text-gray-400 mt-3 text-center hidden"></p>
+
+</fieldset>
+
+<fieldset id="admin-panel" class="border border-gray-600 p-4 rounded-lg mt-6 hidden">
+    </fieldset>
 
                 <h3 class="text-md font-semibold text-white mb-2">Danh sách Người dùng:</h3>
                 <div id="admin-user-list-wrapper" class="bg-gray-900 p-3 rounded-lg max-h-[300px] overflow-y-auto">

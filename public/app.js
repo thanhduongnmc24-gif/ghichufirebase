@@ -113,25 +113,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const bottomTabSettings = document.getElementById('bottom-tab-settings');
     const bottomNav = document.getElementById('bottom-nav'); 
 
-    // --- Biến Phần 5 (Đồng bộ Online) ---
-    const syncUsernameInput = document.getElementById('sync-username');
-    const syncPasswordInput = document.getElementById('sync-password');
-    const syncUpBtn = document.getElementById('sync-up-btn');
-    const syncDownBtn = document.getElementById('sync-down-btn');
-    const syncStatusMsg = document.getElementById('sync-status-msg');
+   // --- Biến Phần 5 (Đồng bộ Online) ---
+const authLoggedOutView = document.getElementById('auth-logged-out-view');
+const authLoggedInView = document.getElementById('auth-logged-in-view');
+const authEmailInput = document.getElementById('auth-email');
+const authPasswordInput = document.getElementById('auth-password');
+const authLoginBtn = document.getElementById('auth-login-btn');
+const authRegisterBtn = document.getElementById('auth-register-btn');
+const authUserEmail = document.getElementById('auth-user-email');
+const authLogoutBtn = document.getElementById('auth-logout-btn');
+const syncStatusMsg = document.getElementById('sync-status-msg'); // Giữ lại
 
     // --- Biến Phần 6 (Admin) ---
-    const adminLoginBtn = document.getElementById('admin-login-btn');
-    const adminPanel = document.getElementById('admin-panel');
-    const adminLogoutBtn = document.getElementById('admin-logout-btn');
-    const adminUserListWrapper = document.getElementById('admin-user-list-wrapper');
-    const adminUserLoading = document.getElementById('admin-user-loading');
-    const adminUserList = document.getElementById('admin-user-list');
-    const adminUserListBody = document.getElementById('admin-user-list-body');
-    const adminNoteViewerModal = document.getElementById('admin-note-viewer-modal');
-    const adminCloseNoteViewer = document.getElementById('admin-close-note-viewer');
-    const adminNoteViewerTitle = document.getElementById('admin-note-viewer-title');
-    const adminNoteViewerContent = document.getElementById('admin-note-viewer-content');
+
     
     // --- Biến Trạng thái (State) ---
     let summaryViewMode = 'byDate'; // 'byDate' hoặc 'byNote'
@@ -151,7 +145,11 @@ document.addEventListener('DOMContentLoaded', () => {
         notifyTimeDem: "20:00",
         notifyTimeOff: "08:00"
     };
-
+    // (MỚI) Biến Firebase
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    let currentUser = null; // Trạng thái đăng nhập
+    let firestoreUnsubscribe = null; // Hàm để "ngắt" listener
     // ===================================================================
     // PHẦN 1: LOGIC TIN TỨC (RSS, TÓM TẮT, CHAT)
     // ===================================================================
@@ -650,7 +648,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         localStorage.setItem('myScheduleNotes', JSON.stringify(cleanData));
-        
+        syncUpToFirestore();
         // Đồng bộ lên server (nếu đã đăng ký push)
         syncNotesToServer().catch(err => console.error('Lỗi đồng bộ ghi chú:', err));
     }
@@ -1202,143 +1200,161 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ===================================================================
     // PHẦN 3: LOGIC ADMIN (ĐĂNG NHẬP, XEM, XÓA)
-    // ===================================================================
-    
-    /**
-     * Tải bảng điều khiển Admin (lấy danh sách user) sau khi đăng nhập thành công.
-     */
-    async function loadAdminPanel() {
-        if (!currentAdminCreds) return;
-        
-        // Ẩn các fieldset cũ
-        document.querySelector('#settings-main fieldset:nth-of-type(1)').classList.add('hidden'); // Push
-        document.querySelector('#settings-main fieldset:nth-of-type(2)').classList.add('hidden'); // Sync
-        
-        // Hiện panel admin
-        adminPanel.classList.remove('hidden');
-        adminUserList.classList.add('hidden');
-        adminUserLoading.classList.remove('hidden');
-        
-        try {
-            // Gọi API lấy danh sách user
-            const response = await fetch('/api/admin/get-users', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(currentAdminCreds) // Gửi { adminUser, adminPass }
-            });
-            
-            const users = await response.json();
-            if (!response.ok) throw new Error(users.error || 'Lỗi không xác định');
+   // ==========================================================
+// (MỚI) KHỐI FIREBASE AUTH & FIRESTORE (Thay thế Sync/Admin)
+// ==========================================================
 
-            // Hiển thị danh sách
-            adminUserListBody.innerHTML = '';
-            users.forEach(user => {
-                const tr = document.createElement('tr');
-                tr.className = user.is_admin ? 'bg-gray-800' : ''; // Tô đậm Admin khác
-                tr.innerHTML = `
-                    <td class="px-3 py-2 whitespace-nowrap text-sm">
-                        <span class="text-white">${user.username}</span>
-                        ${user.is_admin ? '<span class="ml-2 text-xs text-red-400 font-bold">[ADMIN]</span>' : ''}
-                    </td>
-                    <td class="px-3 py-2 whitespace-nowrap text-sm space-x-2">
-                        <button data-user="${user.username}" class="text-blue-400 hover:text-blue-300 text-xs font-medium admin-view-notes">Xem</button>
-                        <button data-user="${user.username}" class="text-red-400 hover:text-red-300 text-xs font-medium admin-delete-user">Xóa</button>
-                    </td>
-                `;
-                adminUserListBody.appendChild(tr);
-            });
+/**
+ * Tự động được gọi khi trạng thái đăng nhập thay đổi (load trang, đăng nhập, đăng xuất).
+ */
+auth.onAuthStateChanged(user => {
+    if (user) {
+        // --- ĐÃ ĐĂNG NHẬP ---
+        console.log("Firebase: Đã đăng nhập với:", user.email);
+        currentUser = user;
 
-            adminUserLoading.classList.add('hidden');
-            adminUserList.classList.remove('hidden');
+        // Cập nhật giao diện
+        authLoggedInView.classList.remove('hidden');
+        authLoggedOutView.classList.add('hidden');
+        authUserEmail.textContent = user.email;
+        showSyncStatus('Đã đăng nhập. Bắt đầu đồng bộ...', false);
 
-        } catch (err) {
-            showSyncStatus(`Lỗi Admin: ${err.message}`, true);
-            adminLogout(); // Đăng xuất nếu có lỗi
+        // (QUAN TRỌNG) Kích hoạt listener tự động tải về
+        setupFirestoreListener(user.uid);
+
+    } else {
+        // --- ĐÃ ĐĂNG XUẤT / CHƯA ĐĂNG NHẬP ---
+        console.log("Firebase: Chưa đăng nhập.");
+        currentUser = null;
+
+        // Cập nhật giao diện
+        authLoggedInView.classList.add('hidden');
+        authLoggedOutView.classList.remove('hidden');
+        authUserEmail.textContent = '';
+
+        // (QUAN TRỌNG) Ngắt kết nối listener cũ (nếu có)
+        if (firestoreUnsubscribe) {
+            firestoreUnsubscribe(); // Ngắt đồng bộ real-time
+            firestoreUnsubscribe = null;
+            console.log("Firebase: Đã ngắt đồng bộ.");
         }
     }
-    
-    /**
-     * Đăng xuất khỏi chế độ Admin.
-     */
-    function adminLogout() {
-        currentAdminCreds = null;
-        // Ẩn panel admin
-        adminPanel.classList.add('hidden');
-        // Hiện lại các fieldset cũ
-        document.querySelector('#settings-main fieldset:nth-of-type(1)').classList.remove('hidden'); // Push
-        document.querySelector('#settings-main fieldset:nth-of-type(2)').classList.remove('hidden'); // Sync
-        // Xóa mật khẩu
-        syncPasswordInput.value = '';
+});
+
+/**
+ * (Tự động Tải lên) Đẩy ghi chú lên Firestore.
+ */
+async function syncUpToFirestore() {
+    if (!currentUser) return; // Chưa đăng nhập, không làm gì cả
+
+    console.log("Firebase: Đang đồng bộ LÊN...");
+    try {
+        const userDocRef = db.collection('user_notes').doc(currentUser.uid);
+        // Chúng ta dùng set({ noteData }, { merge: true }) 
+        // để nó chỉ cập nhật trường 'noteData', không xóa các trường khác
+        await userDocRef.set({
+            noteData: noteData 
+        }, { merge: true });
+
+        console.log("Firebase: Đồng bộ LÊN thành công.");
+
+    } catch (err) {
+        console.error("Firebase: Lỗi đồng bộ LÊN:", err);
+        showSyncStatus(`Lỗi tải lên: ${err.message}`, true);
+    }
+}
+
+/**
+ * (Tự động Tải về) Lắng nghe thay đổi từ Firestore.
+ * @param {string} userId - ID của người dùng.
+ */
+function setupFirestoreListener(userId) {
+    // Ngắt listener cũ (nếu có)
+    if (firestoreUnsubscribe) {
+        firestoreUnsubscribe();
     }
 
-    /**
-     * (Admin) Xem ghi chú của một người dùng cụ thể.
-     * @param {string} targetUser - Tên người dùng cần xem.
-     */
-    async function adminViewNotes(targetUser) {
-        if (!currentAdminCreds) return;
-        
-        adminNoteViewerTitle.textContent = `Ghi chú của: ${targetUser}`;
-        adminNoteViewerContent.innerHTML = `<p class="text-gray-400">Đang tải ghi chú...</p>`;
-        adminNoteViewerModal.classList.remove('hidden');
-        
-        try {
-            const payload = {
-                ...currentAdminCreds, // { adminUser, adminPass }
-                targetUser: targetUser
-            };
-            
-            const response = await fetch('/api/admin/get-notes', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+    const userDocRef = db.collection('user_notes').doc(userId);
 
-            const notes = await response.json();
-            if (!response.ok) throw new Error(notes.error || 'Lỗi không xác định');
+    // Bắt đầu lắng nghe
+    firestoreUnsubscribe = userDocRef.onSnapshot(doc => {
+        if (doc.exists) {
+            console.log("Firebase: Nhận được dữ liệu TẢI VỀ...");
+            const data = doc.data();
+            const serverNotes = data.noteData || {};
 
-            // Hiển thị Ghi chú (dạng JSON)
-            const formattedNotes = JSON.stringify(notes, null, 2); // Định dạng JSON cho dễ đọc
-            adminNoteViewerContent.innerHTML = `<pre class="whitespace-pre-wrap text-white text-sm">${formattedNotes}</pre>`;
+            // (QUAN TRỌNG) Hợp nhất dữ liệu
+            // Đây là logic đơn giản: "Ghi đè" local bằng server
+            // Sau này có thể làm logic hợp nhất thông minh hơn
+            noteData = serverNotes; 
 
-        } catch (err) {
-             adminNoteViewerContent.innerHTML = `<p class="text-red-400">Lỗi: ${err.message}</p>`;
+            // Lưu vào local và vẽ lại
+            localStorage.setItem('myScheduleNotes', JSON.stringify(noteData));
+            renderCalendar(currentViewDate); // Vẽ lại lịch với data mới
+
+            showSyncStatus('Đồng bộ thành công.', false);
+        } else {
+            // Người dùng này chưa có dữ liệu, đẩy dữ liệu local lên
+            console.log("Firebase: Người dùng mới, đẩy dữ liệu local lên.");
+            syncUpToFirestore(); 
         }
+    }, err => {
+        console.error("Firebase: Lỗi listener:", err);
+        showSyncStatus(`Lỗi đồng bộ: ${err.message}`, true);
+    });
+}
+
+// --- Gắn sự kiện cho các nút Auth mới ---
+
+// Đăng nhập
+authLoginBtn.addEventListener('click', async () => {
+    const email = authEmailInput.value.trim();
+    const password = authPasswordInput.value.trim();
+    if (!email || !password) {
+        showSyncStatus('Vui lòng nhập email và mật khẩu.', true);
+        return;
     }
-    
-    /**
-     * (Admin) Xóa một người dùng.
-     * @param {string} targetUser - Tên người dùng cần xóa.
-     */
-    async function adminDeleteUser(targetUser) {
-        if (!currentAdminCreds) return;
 
-        if (!confirm(`ĐẠI CA ADMIN!\n\nĐại ca có chắc chắn muốn XÓA VĨNH VIỄN người dùng "${targetUser}" không?\n\nHành động này không thể hoàn tác.`)) {
-            return;
-        }
-
-        try {
-            const payload = {
-                ...currentAdminCreds, // { adminUser, adminPass }
-                targetUser: targetUser
-            };
-            
-            const response = await fetch('/api/admin/delete-user', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.error || 'Lỗi không xác định');
-            
-            alert(result.message); // Thông báo thành công
-            loadAdminPanel(); // Tải lại danh sách
-            
-        } catch (err) {
-            alert(`Lỗi khi xóa: ${err.message}`);
-        }
+    showSyncStatus('Đang đăng nhập...', false);
+    try {
+        await auth.signInWithEmailAndPassword(email, password);
+        // Hàm onAuthStateChanged ở trên sẽ tự động xử lý
+    } catch (err) {
+        showSyncStatus(err.message, true);
     }
+});
+
+// Đăng ký
+authRegisterBtn.addEventListener('click', async () => {
+    const email = authEmailInput.value.trim();
+    const password = authPasswordInput.value.trim();
+    if (!email || !password) {
+        showSyncStatus('Vui lòng nhập email và mật khẩu.', true);
+        return;
+    }
+
+    showSyncStatus('Đang tạo tài khoản...', false);
+    try {
+        await auth.createUserWithEmailAndPassword(email, password);
+        // Hàm onAuthStateChanged ở trên sẽ tự động xử lý
+    } catch (err) {
+        showSyncStatus(err.message, true);
+    }
+});
+
+// Đăng xuất
+authLogoutBtn.addEventListener('click', async () => {
+    try {
+        await auth.signOut();
+        // Hàm onAuthStateChanged ở trên sẽ tự động xử lý
+        showSyncStatus('Đã đăng xuất.', false);
+    } catch (err) {
+        showSyncStatus(err.message, true);
+    }
+});
+
+// --- Kết thúc khối sự kiện 3 ---
+})();
 
     // ===================================================================
     // PHẦN 4: LOGIC ĐIỀU HƯỚNG (TAB)

@@ -2,7 +2,7 @@
 /* FILE: public/app.js                                                 */
 /* MỤC ĐÍCH: Logic JavaScript chính cho toàn bộ ứng dụng Ghichu App.     */
 /* PHIÊN BẢN: Đã tách logic tính toán sang utils.js                     */
-/* CẬP NHẬT: Đã sửa lỗi "race condition" của Firestore onSnapshot       */
+/* CẬP NHẬT: (LẦN 2) Sửa lỗi "race condition" bằng cờ isSaving           */
 /* =================================================================== */
 
 // ===================================================================
@@ -138,6 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const db = firebase.firestore();
     let currentUser = null; // Trạng thái đăng nhập
     let firestoreUnsubscribe = null; // Hàm để "ngắt" listener
+    let isSaving = false; // (SỬA LỖI) Cờ để bỏ qua listener khi đang lưu
 
     // --- Biến Phần 5 (Đồng bộ Online) --- (ĐÃ THAY THẾ)
     const authLoggedOutView = document.getElementById('auth-logged-out-view');
@@ -1462,10 +1463,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             noteData[currentEditingDateStr].push(noteText);
             
-            saveNoteData(); // Lưu
+            // (SỬA LỖI) Di chuyển render LÊN TRÊN save
             renderNoteList(currentEditingDateStr); // Vẽ lại list trong modal
             renderCalendar(currentViewDate); // Vẽ lại lịch (hiển thị chấm)
             newNoteInput.value = ''; 
+            
+            saveNoteData(); // Lưu (và bắt đầu sync) SAU KHI đã vẽ xong
         });
         
         // Sửa/Xóa ghi chú (dùng Event Delegation)
@@ -1482,18 +1485,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 const newText = prompt("Sửa ghi chú:", oldText); // Dùng prompt cho nhanh
                 if (newText !== null && newText.trim() !== "") {
                     noteData[currentEditingDateStr][index] = newText.trim();
-                    saveNoteData(); 
+                    
+                    // (SỬA LỖI) Render trước, save sau
                     renderNoteList(currentEditingDateStr);
                     renderCalendar(currentViewDate);
+                    saveNoteData(); 
                 }
             }
             if (target.classList.contains('delete-note')) {
                 // XÓA
                 if (confirm(`Bạn có chắc muốn xóa ghi chú: "${notes[index]}"?`)) {
                     noteData[currentEditingDateStr].splice(index, 1);
-                    saveNoteData(); 
+                    
+                    // (SỬA LỖI) Render trước, save sau
                     renderNoteList(currentEditingDateStr);
                     renderCalendar(currentViewDate);
+                    saveNoteData(); 
                 }
             }
         });
@@ -1529,9 +1536,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             noteData[dateStr].push(noteText); 
                         }
                     });
-                    saveNoteData(); // Lưu 1 lần sau khi thêm hết
+                    
+                    // (SỬA LỖI) Render trước, save sau
                     renderCalendar(currentViewDate); 
                     cal_aiInput.value = ''; 
+                    saveNoteData(); // Lưu 1 lần sau khi thêm hết
                 } else {
                     throw new Error("AI không trả về định dạng mảng.");
                 }
@@ -1588,16 +1597,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         /**
-         * (Tự động Tải lên) Đẩy ghi chú lên Firestore.
+         * (Tự động Tải lên - ĐÃ SỬA LỖI) Đẩy ghi chú lên Firestore.
          */
         async function syncUpToFirestore() {
-            if (!currentUser) return; // Chưa đăng nhập, không làm gì cả
+            if (!currentUser) return; 
             
+            isSaving = true; // (SỬA LỖI) Bật cờ
             console.log("Firebase: Đang đồng bộ LÊN...");
             try {
                 const userDocRef = db.collection('user_notes').doc(currentUser.uid);
-                // Chúng ta dùng set({ noteData }, { merge: true }) 
-                // để nó chỉ cập nhật trường 'noteData', không xóa các trường khác
                 await userDocRef.set({
                     noteData: noteData 
                 }, { merge: true });
@@ -1607,11 +1615,14 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (err) {
                 console.error("Firebase: Lỗi đồng bộ LÊN:", err);
                 showSyncStatus(`Lỗi tải lên: ${err.message}`, true);
+            } finally {
+                // (SỬA LỖI) Luôn tắt cờ sau khi save
+                isSaving = false;
             }
         }
 
         /**
-         * (Tự động Tải về - ĐÃ SỬA LỖI RACE CONDITION) 
+         * (Tự động Tải về - ĐÃ SỬA LỖI LẦN 2) 
          * Lắng nghe thay đổi từ Firestore.
          * @param {string} userId - ID của người dùng.
          */
@@ -1626,11 +1637,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // Bắt đầu lắng nghe
             firestoreUnsubscribe = userDocRef.onSnapshot(doc => {
                 
-                // (SỬA LỖI) Bỏ qua các thay đổi 'local' (chưa được đẩy lên server)
-                // Việc này ngăn 'tai' ghi đè 'miệng'
-                if (doc.metadata.hasPendingWrites) {
-                    console.log("Firebase: Bỏ qua snapshot (đang chờ ghi local)...");
-                    return; // Không làm gì cả, chờ server xác nhận
+                // (SỬA LỖI) Dùng cờ isSaving
+                if (isSaving) {
+                    console.log("Firebase: Bỏ qua snapshot (do đang lưu)...");
+                    return; // Bỏ qua snapshot này
                 }
 
                 if (doc.exists) {
@@ -1638,23 +1648,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     const data = doc.data();
                     const serverNotes = data.noteData || {};
                     
-                    // (SỬA LỖI) Chỉ cập nhật nếu dữ liệu server KHÁC dữ liệu local
-                    // Việc này tránh render lại không cần thiết
                     if (JSON.stringify(noteData) !== JSON.stringify(serverNotes)) {
                         console.log("Firebase: Dữ liệu server khác local, đang cập nhật...");
-                        noteData = serverNotes; // Ghi đè biến local
-                        
-                        // GHI ĐÈ localStorage bằng dữ liệu sạch từ server
+                        noteData = serverNotes; 
                         localStorage.setItem('myScheduleNotes', JSON.stringify(noteData));
-                        
-                        renderCalendar(currentViewDate); // Vẽ lại lịch với data mới
+                        renderCalendar(currentViewDate); 
                     }
                     
                     showSyncStatus('Đồng bộ thành công.', false);
                 } else {
                     // Người dùng này chưa có dữ liệu, đẩy dữ liệu local lên
                     console.log("Firebase: Người dùng mới, đẩy dữ liệu local lên.");
-                    syncUpToFirestore(); 
+                    syncUpToFirestore(); // Hàm này đã tự set isSaving = true
                 }
             }, err => {
                 console.error("Firebase: Lỗi listener:", err);

@@ -2,7 +2,7 @@
 /* FILE: public/app.js                                                 */
 /* MỤC ĐÍCH: Logic JavaScript chính cho toàn bộ ứng dụng Ghichu App.     */
 /* PHIÊN BẢN: Đã tách logic tính toán sang utils.js                     */
-/* CẬP NHẬT: Đã thay thế Sync/Admin bằng Firebase Auth/Firestore        */
+/* CẬP NHẬT: Đã sửa lỗi "race condition" của Firestore onSnapshot       */
 /* =================================================================== */
 
 // ===================================================================
@@ -1352,6 +1352,7 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshFeedButton.addEventListener('click', handleRefreshClick);
         refreshFeedButtonMobile.addEventListener('click', handleRefreshClick); 
 
+        /* (TẠM THỜI VÔ HIỆU HÓA ĐỂ TRÁNH LẶP VÔ TẬN)
         // Tải feed mặc định
         const defaultFeed = feedNav.querySelector('.feed-button.active');
         if (defaultFeed) {
@@ -1359,6 +1360,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         // Tải ngầm các feed khác
         setTimeout(prewarmCache, 0);
+        */
 
         // Nút đóng Modal Tóm tắt
         closeSummaryModalButton.addEventListener('click', () => {
@@ -1609,7 +1611,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         /**
-         * (Tự động Tải về) Lắng nghe thay đổi từ Firestore.
+         * (Tự động Tải về - ĐÃ SỬA LỖI RACE CONDITION) 
+         * Lắng nghe thay đổi từ Firestore.
          * @param {string} userId - ID của người dùng.
          */
         function setupFirestoreListener(userId) {
@@ -1622,19 +1625,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Bắt đầu lắng nghe
             firestoreUnsubscribe = userDocRef.onSnapshot(doc => {
+                
+                // (SỬA LỖI) Bỏ qua các thay đổi 'local' (chưa được đẩy lên server)
+                // Việc này ngăn 'tai' ghi đè 'miệng'
+                if (doc.metadata.hasPendingWrites) {
+                    console.log("Firebase: Bỏ qua snapshot (đang chờ ghi local)...");
+                    return; // Không làm gì cả, chờ server xác nhận
+                }
+
                 if (doc.exists) {
-                    console.log("Firebase: Nhận được dữ liệu TẢI VỀ...");
+                    console.log("Firebase: Nhận được dữ liệu TẢI VỀ (từ server)...");
                     const data = doc.data();
                     const serverNotes = data.noteData || {};
                     
-                    // (QUAN TRỌNG) Hợp nhất dữ liệu
-                    // Đây là logic đơn giản: "Ghi đè" local bằng server
-                    // Sau này có thể làm logic hợp nhất thông minh hơn
-                    noteData = serverNotes; 
-                    
-                    // Lưu vào local và vẽ lại
-                    localStorage.setItem('myScheduleNotes', JSON.stringify(noteData));
-                    renderCalendar(currentViewDate); // Vẽ lại lịch với data mới
+                    // (SỬA LỖI) Chỉ cập nhật nếu dữ liệu server KHÁC dữ liệu local
+                    // Việc này tránh render lại không cần thiết
+                    if (JSON.stringify(noteData) !== JSON.stringify(serverNotes)) {
+                        console.log("Firebase: Dữ liệu server khác local, đang cập nhật...");
+                        noteData = serverNotes; // Ghi đè biến local
+                        
+                        // GHI ĐÈ localStorage bằng dữ liệu sạch từ server
+                        localStorage.setItem('myScheduleNotes', JSON.stringify(noteData));
+                        
+                        renderCalendar(currentViewDate); // Vẽ lại lịch với data mới
+                    }
                     
                     showSyncStatus('Đồng bộ thành công.', false);
                 } else {
